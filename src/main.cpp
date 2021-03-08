@@ -22,13 +22,13 @@
 #include <PubSubClient.h>
 
 //WiFi Settings
-const char* ssid = "TP-LINK_7B10";
-const char* password = "dzesi1234";
+const char* ssid = "";
+const char* password = "";
 
 //MQTT Settings
 const char* mqtt_server = "192.168.0.113";
-//const char* mqtt_user = "admin";
-//const char* mqtt_password = "sunrise2010";
+//const char* mqtt_user = "";
+//const char* mqtt_password = "";
 #endif
 
 double timeLast = 0;
