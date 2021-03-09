@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <LoRa.h>
-#include "SSD1306.h"
+#include "SSD1306Wire.h"
 #include <ArduinoJson.h>
 #include <SoftwareSerial.h>
 
@@ -45,7 +45,7 @@ uint32_t  freq = 868100000; 					// Channel 0, 868.1 MHz
 //uint32_t  freq = 868800000; 					// in Mhz! (868.8)
 //uint32_t  freq = 869525000; 					// in Mhz! (869.525)
 
-SSD1306  display(0x3c, OLED_SDA, OLED_SCL);		// (i2c address of display(0x3c or 0x3d), SDA, SCL) on wemos
+SSD1306Wire display(0x3c, OLED_SDA, OLED_SCL);		// (i2c address of display(0x3c or 0x3d), SDA, SCL) on wemos
 SoftwareSerial HC12(RX_PIN, TX_PIN); // HC-12 TX Pin, HC-12 RX Pin
 
 #ifdef WIFI_ON
