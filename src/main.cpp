@@ -1,73 +1,121 @@
 #include <Arduino.h>
-#include <SPI.h>
+#include <ESP8266WiFi.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <PubSubClient.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 #include <LoRa.h>
-#include "SSD1306Wire.h"
 #include <ArduinoJson.h>
 #include <SoftwareSerial.h>
 
-#define DEFAULT_PIN_SS    16          // GPIO16, D0
-#define DEFAULT_PIN_DIO0  15          // GPIO15, D8
-#define DEFAULT_PIN_RST   NOT_A_PIN   // Unused
-#define OLED_SCL 5							// GPIO5 / D1
-#define OLED_SDA 4							// GPIO4 / D2
-#define WIFI_ON
-#define MQTT_MAX_PACKET_SIZE 256
-#define SFACTOR 10  //spreading factor
-#define RX_PIN  2  // D4
-#define TX_PIN  0  // D3
+#include "Settings.h"
+#include "WifiSettings.h"
+#include "Bitmaps.h"
+#include "Fonts.h"
 
-#ifdef WIFI_ON
-
-#include <ESP8266WiFi.h>
-#include <PubSubClient.h>
-
-//WiFi Settings
-const char* ssid = "";
-const char* password = "";
-
-//MQTT Settings
-const char* mqtt_server = "192.168.0.113";
-//const char* mqtt_user = "";
-//const char* mqtt_password = "";
-#endif
-
-double timeLast = 0;
-
-//LoRa frequency
-uint32_t  freq = 868100000; 					// Channel 0, 868.1 MHz
-//uint32_t  freq = 868300000; 					// Channel 1, 868.3 MHz
-//uint32_t  freq = 868500000; 					// in Mhz! (868.5)
-//uint32_t  freq = 867100000; 					// in Mhz! (867.1)
-//uint32_t  freq = 867300000; 					// in Mhz! (867.3)
-//uint32_t  freq = 867500000; 					// in Mhz! (867.5)
-//uint32_t  freq = 867700000; 					// in Mhz! (867.7)
-//uint32_t  freq = 867900000; 					// in Mhz! (867.9)
-//uint32_t  freq = 868800000; 					// in Mhz! (868.8)
-//uint32_t  freq = 869525000; 					// in Mhz! (869.525)
-
-SSD1306Wire display(0x3c, OLED_SDA, OLED_SCL);		// (i2c address of display(0x3c or 0x3d), SDA, SCL) on wemos
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+WiFiClient espClient;
+PubSubClient mqtt(espClient);
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org");
 SoftwareSerial HC12(RX_PIN, TX_PIN); // HC-12 TX Pin, HC-12 RX Pin
 
-#ifdef WIFI_ON
-WiFiClient espClient;
-PubSubClient client(espClient);
+// Flags
 
-String rssiToSend = "";
-static int counter = 0;
-int senderID = 0;
+bool hc12Flag = false;
+bool receiveFlag = false;
+bool NewDataFlag = false;
 
-void DisplayData(String text)
-{ 
-  display.clear();
-  display.setFont(ArialMT_Plain_16);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, 0, "ID: " );
-  display.drawString(22, 0, String(senderID));
-  display.drawString(55, 0, "No: " );
-  display.drawString(82, 0, String(counter));
-  display.drawString(0, 20, "RSSI: " );
-  display.drawString(45, 20, rssiToSend);
-  display.drawString(0, 40, text);
+int id = 0;
+
+// FUNCTIONS //
+
+void DisplayWelcome()
+{
+  display.clearDisplay();
+  display.drawBitmap(63, 0, Lizard, 65, 55, SSD1306_WHITE);
+  display.setFont(&Dialog_plain_12);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 15);
+  display.print("LORA @ HC12");
+  display.setCursor(0, 30);
+  display.print("GATEWAY");
+  display.setCursor(0, 61);
+  display.print("J.Jaszczur");
+  display.setCursor(80, 61);
+  display.print(FIRMWARE_VERSION);
+  display.display();
+
+  delay(2000);
+}
+
+void DisplayBackground()
+{
+  display.clearDisplay();
+  display.drawBitmap(0, 21, MqttLogo, 50, 12, SSD1306_WHITE);
+  display.setFont(&Dialog_plain_12);
+  display.setCursor(90, 15);
+  display.print("LORA");
+  display.setCursor(90, 45);
+  display.print("HC12");
+  display.setFont(&Dialog_plain_10);
+  display.setCursor(0, BOTTOM_TEXT_Y);
+  display.print("Last:");
+
+  // Upper line
+  display.drawLine(20, 13, 20, 10, SSD1306_WHITE);
+  display.drawLine(20, 10, 40, 10, SSD1306_WHITE);
+  // Lower line
+  display.drawLine(20, 37, 20, 40, SSD1306_WHITE);
+  display.drawLine(20, 40, 40, 40, SSD1306_WHITE);
+
+  display.display();
+}
+
+void DisplayData(int id, bool hc12, bool receive, String time)
+{
+  display.setFont(&Dialog_plain_12);
+  DisplayBackground();
+
+  // HC12 data
+  if(hc12)
+  {
+    display.setCursor(CURSOR_X, LOWER_ID_TEXT_Y);
+
+    if(receive)
+    {
+      display.print("<");
+    }
+    else
+    {
+      display.print(">");
+    }
+
+    display.setCursor(ID_TEXT_X, LOWER_ID_TEXT_Y);
+  }
+    // HC12 data
+  else
+  {
+    display.setCursor(CURSOR_X, UPPER_ID_TEXT_Y);
+
+    if(receive)
+    {
+      display.print("<");
+    }
+    else
+    {
+      display.print(">");
+    }
+
+    display.setCursor(ID_TEXT_X, UPPER_ID_TEXT_Y);
+  }
+
+  display.setFont(&Dialog_plain_10);
+  display.print(String(id));
+  display.setCursor(TIME_X, BOTTOM_TEXT_Y);
+  display.print(time);
   display.display();
 }
 
@@ -78,177 +126,233 @@ void ConnectToWifi()
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
-  display.clear();
-  display.setFont(ArialMT_Plain_16);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, 0, "Connecting to:" );
-  display.drawString(0, 20, ssid);
+  display.clearDisplay();
+  display.setCursor(0, 20);
+  display.print("Connecting to:");
+  display.setCursor(0, 40);
+  display.print((String)ssid);
   display.display();
 
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  WiFi.softAPdisconnect (true); //disable hotspot mode
+  WiFi.hostname(DEVICE_NAME);
 
   int cursor = 0;
 
-  while (WiFi.status() != WL_CONNECTED) 
+  while(WiFi.status() != WL_CONNECTED) 
   {
     delay(500);
     Serial.print(".");
-    display.drawString(cursor, 40, "." );
+    display.setCursor(cursor, 60);
+    display.print(".");
     display.display();
     cursor = cursor + 2;
   }
-
-  randomSeed(micros());
 
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+  Serial.println("");
 
-  display.clear();
-  display.drawString(0, 0, "WiFi connected");
+  display.clearDisplay();
+  display.setCursor(0, 20);
+  display.print("WiFi connected");
+  display.setCursor(0, 40);
+  display.print(WiFi.localIP().toString().c_str());
   display.display();
 }
 
-void reconnect() 
+void callback(char* topic, byte* payload, unsigned int length) 
 {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i=0;i<length;i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+void ConnectToMQTT() 
+{
+  display.clearDisplay();
+  display.setCursor(0, 20);
+  display.print("Connecting to:");
+  display.setCursor(0, 40);
+  display.print(mqtt_server);
+  display.display();
+
+  int cursor = 0;
   // Loop until we're reconnected
-  while (!client.connected()) 
+  while (!mqtt.connected()) 
   {
+    mqtt.setServer(mqtt_server, 1883);
+    mqtt.setCallback(callback);
+
     Serial.print("Attempting MQTT connection...");
-
-    // Create a random client ID
-    String clientId = "D1_MINI";
     
-    // Attempt to connect
-    if (client.connect(clientId.c_str())) 
-    {
-      Serial.println("connected");
-      //client.subscribe("basic/time/time");
-    } 
+    display.setCursor(cursor, 60);
+    display.print(".");
+    display.display();
+    cursor = cursor + 2;
+    delay(1000);
 
+    // Attempt to connect
+    if(mqtt.connect(DEVICE_NAME, mqtt_user, mqtt_password)) 
+    {
+      Serial.println("Connected");
+      // Once connected, publish an announcement...
+      mqtt.publish("outTopic","hello world");
+      // ... and resubscribe
+      //mqtt.subscribe(TEST_TOPIC);
+
+      display.clearDisplay();
+      display.setCursor(0, 20);
+      display.print("MQTT connected");
+      display.display();
+    } 
     else 
     {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println("try again in 5 seconds");
+      Serial.print("Failed, rc=");
+      Serial.print(mqtt.state());
+      Serial.println(" Try again in 1 second");
       // Wait 5 seconds before retrying
-      delay(5000);
     }
   }
 }
-#endif
+
+bool CheckMqttConnection()
+{
+  if(!mqtt.connected()) 
+  {
+    ConnectToMQTT();
+    DisplayBackground();
+  }
+
+  return true;
+}
+
+void MqttSend(String data, bool hc12)
+{ 
+  CheckMqttConnection();
+
+  char message[200];
+  data.toCharArray(message, sizeof(message));
+
+  if(hc12)
+  {
+    mqtt.publish(HC12_TOPIC, message);
+    Serial.println("HC12 -> MQTT sent!");
+  }
+  else
+  {
+    mqtt.publish(LORA_TOPIC, message);
+    Serial.println("Lora -> MQTT sent!");
+  }   
+}
+
+void LoraConfigure()
+{
+  LoRa.setPins(DEFAULT_PIN_SS, DEFAULT_PIN_RST, DEFAULT_PIN_DIO0);
+
+  if (!LoRa.begin(freq)) 
+  {
+    Serial.println("Starting LoRa failed!");
+  }
+  LoRa.setSpreadingFactor(SFACTOR);           // ranges from 6-12,default 7 see API docs
+}
+
+String LoraReadData()
+{
+  String data;
+  // read packet
+  while (LoRa.available()) {
+      data += (char)LoRa.read();
+  }
+
+  Serial.println("Received data from Lora:");
+  Serial.println(data);
+  return data;
+}
+
+int CheckSenderId(String message)
+{
+  const size_t capacity = JSON_OBJECT_SIZE(12) + 80;
+  DynamicJsonDocument data(capacity);
+  int senderid = -1;
+
+  deserializeJson(data, message);
+
+  if(data.containsKey("id"))
+  {
+    senderid = data["id"];
+  }
+
+  return senderid;
+}
+
+String Hc12ReadData()
+{
+  String data = HC12.readString();
+  Serial.println("Received data from HC-12:");
+  Serial.println(data);
+  return data;
+}
+
+// MAIN CODE //
 
 void setup() 
 {
-  Serial.begin(9600);
-  HC12.begin(9600);               // Serial port to HC12
-
-  pinMode(D3, INPUT);
-
-  //display.init();
-  //display.flipScreenVertically();
-  LoRa.setPins(DEFAULT_PIN_SS, DEFAULT_PIN_RST, DEFAULT_PIN_DIO0);
-
-  Serial.println("LoRa Receiver");
-
-  if (!LoRa.begin(freq)) {
-    Serial.println("Starting LoRa failed!");
-    //while (1);
-  }
-
-  LoRa.setSpreadingFactor(SFACTOR);           // ranges from 6-12,default 7 see API docs
-
+  Serial.begin(115200);
+  HC12.begin(9600);                 // Serial port to HC12
+  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
+  DisplayWelcome();
   ConnectToWifi();
-  client.setServer(mqtt_server, 1883);
+  ConnectToMQTT();
+  DisplayBackground();
+  timeClient.begin();
+  timeClient.setTimeOffset(3600);   // GMT+1
+  LoraConfigure();
 }
 
 void loop() 
 {
-  double actualTime = millis();
-  char message [200];
   String incoming = "";
 
-  const size_t capacity = JSON_OBJECT_SIZE(12) + 80;
-  DynamicJsonDocument data(capacity);
-
-  if((actualTime - timeLast) > 3500)
-  {
-    Serial.println("Waiting for message...");
-    timeLast = actualTime;
-
-    DisplayData("Waiting...");
-  }
-
-  // try to parse packet
+  // Check Lora
   if(LoRa.parsePacket()) 
   {
-    // read packet
-    while (LoRa.available()) {
-      incoming += (char)LoRa.read();
-    }
-
-    counter ++;
-
-    rssiToSend = String(LoRa.packetRssi());
-    Serial.println(incoming);
-
-    deserializeJson(data, incoming);
-
-    senderID = data["id"];
-    // received a packet
-    Serial.print("Data received from ");
-    Serial.print(senderID);
-    // print RSSI of packet
-    Serial.print(" with RSSI ");
-    Serial.println(rssiToSend);
-
-    data["rssi"] = rssiToSend.toInt();
-    String msg = "";
-    serializeJson(data, msg);
-    Serial.println(msg);
-    msg.toCharArray(message, sizeof(message));
-
-    //Check MQTT connection
-    if (!client.connected()) 
-    {
-      reconnect();
-    }
-
-    client.publish("home/lora", message);
-    
-    DisplayData("Lora sent!");
+    incoming = LoraReadData();
+    hc12Flag = false;
+    receiveFlag = true;
+    NewDataFlag = true;
   }
 
+  // Check HC-12
   if(HC12.available()) 
   {        // If HC-12 has data
-    incoming = HC12.readString();
-    Serial.print(incoming);      // Send the data to Serial monitor
+    incoming = Hc12ReadData();
+    hc12Flag = true;
+    receiveFlag = true;
+    NewDataFlag = true;
+  }
 
-    deserializeJson(data, incoming);
+  if(NewDataFlag)
+  {
+    timeClient.update();
+    id = CheckSenderId(incoming);
+    MqttSend(incoming, hc12Flag);
+    DisplayData(id, hc12Flag, receiveFlag, timeClient.getFormattedTime());
+    NewDataFlag = false;
+  }
 
-    senderID = data["id"];
-    // received a packet
-    Serial.print("Data received from ");
-    Serial.print(senderID);
-    Serial.print(" ");
-    rssiToSend = "";
+  //CheckMqttConnection();
+  mqtt.loop();
 
-    incoming.toCharArray(message, sizeof(message));
-
-    Serial.print(message);
-
-    //Check MQTT connection
-    if (!client.connected()) 
-    {
-      reconnect();
-    }
-
-    client.publish("home/433", message);
-
-    DisplayData("433MHz sent!");
-
-    counter ++;
+  if(WiFi.status() != WL_CONNECTED)
+  {
+    ConnectToWifi();
+    DisplayBackground();
   }
 }
