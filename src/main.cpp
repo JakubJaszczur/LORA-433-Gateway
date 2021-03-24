@@ -318,7 +318,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
     data += (char)payload[i];
   }
-
+  
   Serial.println(data);
 
   if(String(topic) == HC12_SEND_TOPIC)
