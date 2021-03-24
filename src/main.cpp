@@ -163,17 +163,6 @@ void ConnectToWifi()
   display.display();
 }
 
-void callback(char* topic, byte* payload, unsigned int length) 
-{
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  for (int i=0;i<length;i++) {
-    Serial.print((char)payload[i]);
-  }
-  Serial.println();
-}
-
 void ConnectToMQTT() 
 {
   display.clearDisplay();
@@ -252,6 +241,22 @@ void MqttSend(String data, bool hc12)
   }   
 }
 
+void GatewaySend(String data, bool hc12)
+{
+  if(hc12)
+  {
+    HC12.println(data);
+    Serial.println("MQTT -> HC12 sent!");
+  }
+  else
+  {
+    LoRa.beginPacket();
+    LoRa.print(data);
+    LoRa.endPacket(true);
+    Serial.println("MQTT -> Lora sent!");
+  }   
+}
+
 void LoraConfigure()
 {
   LoRa.setPins(DEFAULT_PIN_SS, DEFAULT_PIN_RST, DEFAULT_PIN_DIO0);
@@ -298,6 +303,46 @@ String Hc12ReadData()
   Serial.println("Received data from HC-12:");
   Serial.println(data);
   return data;
+}
+
+void callback(char* topic, byte* payload, unsigned int length) 
+{
+  char messageBuffer [250];
+  String data = "";
+
+  Serial.print("Message arrived from MQTT [");
+  Serial.print(topic);
+  Serial.print("] ");
+
+  for (uint i = 0; i < length; i++)
+  {
+    data += (char)payload[i];
+  }
+
+  Serial.println(data);
+
+  if(String(topic) == HC12_SEND_TOPIC)
+  {
+    hc12Flag = true;
+    receiveFlag = false;
+    NewDataFlag = true;
+  }
+
+  if(String(topic) == LORA_SEND_TOPIC)
+  {
+    hc12Flag = false;
+    receiveFlag = false;
+    NewDataFlag = true;
+  }
+
+  if(NewDataFlag)
+  {
+    timeClient.update();
+    id = CheckSenderId(data);
+    GatewaySend(data, hc12Flag);
+    DisplayData(id, hc12Flag, receiveFlag, timeClient.getFormattedTime());
+    NewDataFlag = false;
+  }
 }
 
 // MAIN CODE //
