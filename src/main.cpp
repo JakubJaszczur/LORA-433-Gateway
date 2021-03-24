@@ -29,6 +29,7 @@ bool receiveFlag = false;
 bool NewDataFlag = false;
 
 int id = 0;
+unsigned long lastUpdate = 0;
 
 // FUNCTIONS //
 
@@ -86,11 +87,11 @@ void DisplayData(int id, bool hc12, bool receive, String time)
 
     if(receive)
     {
-      display.print("<");
+      display.print("<       <");
     }
     else
     {
-      display.print(">");
+      display.print(">       >");
     }
 
     display.setCursor(ID_TEXT_X, LOWER_ID_TEXT_Y);
@@ -102,11 +103,11 @@ void DisplayData(int id, bool hc12, bool receive, String time)
 
     if(receive)
     {
-      display.print("<");
+      display.print("<       <");
     }
     else
     {
-      display.print(">");
+      display.print(">       >");
     }
 
     display.setCursor(ID_TEXT_X, UPPER_ID_TEXT_Y);
@@ -163,6 +164,78 @@ void ConnectToWifi()
   display.display();
 }
 
+void GatewaySend(String data, bool hc12)
+{
+  if(hc12)
+  {
+    HC12.println(data);
+    Serial.println("MQTT -> HC12 sent!");
+  }
+  else
+  {
+    LoRa.beginPacket();
+    LoRa.print(data);
+    LoRa.endPacket(true);
+    Serial.println("MQTT -> Lora sent!");
+  }   
+}
+
+int CheckSenderId(String message)
+{
+  const size_t capacity = JSON_OBJECT_SIZE(12) + 80;
+  DynamicJsonDocument data(capacity);
+  int senderid = -1;
+
+  deserializeJson(data, message);
+
+  if(data.containsKey("id"))
+  {
+    senderid = data["id"];
+  }
+
+  return senderid;
+}
+
+void callback(char* topic, byte* payload, unsigned int length) 
+{
+  char messageBuffer [250];
+  String data = "";
+
+  Serial.print("Message arrived from MQTT [");
+  Serial.print(topic);
+  Serial.print("] ");
+
+  for (uint i = 0; i < length; i++)
+  {
+    data += (char)payload[i];
+  }
+  
+  Serial.println(data);
+
+  if(String(topic) == HC12_SEND_TOPIC)
+  {
+    hc12Flag = true;
+    receiveFlag = false;
+    NewDataFlag = true;
+  }
+
+  if(String(topic) == LORA_SEND_TOPIC)
+  {
+    hc12Flag = false;
+    receiveFlag = false;
+    NewDataFlag = true;
+  }
+
+  if(NewDataFlag)
+  {
+    timeClient.update();
+    id = CheckSenderId(data);
+    GatewaySend(data, hc12Flag);
+    DisplayData(id, hc12Flag, receiveFlag, timeClient.getFormattedTime());
+    NewDataFlag = false;
+  }
+}
+
 void ConnectToMQTT() 
 {
   display.clearDisplay();
@@ -191,10 +264,9 @@ void ConnectToMQTT()
     if(mqtt.connect(DEVICE_NAME, mqtt_user, mqtt_password)) 
     {
       Serial.println("Connected");
-      // Once connected, publish an announcement...
-      mqtt.publish("outTopic","hello world");
-      // ... and resubscribe
-      //mqtt.subscribe(TEST_TOPIC);
+
+      mqtt.subscribe(LORA_SEND_TOPIC);
+      mqtt.subscribe(HC12_SEND_TOPIC);
 
       display.clearDisplay();
       display.setCursor(0, 20);
@@ -241,22 +313,6 @@ void MqttSend(String data, bool hc12)
   }   
 }
 
-void GatewaySend(String data, bool hc12)
-{
-  if(hc12)
-  {
-    HC12.println(data);
-    Serial.println("MQTT -> HC12 sent!");
-  }
-  else
-  {
-    LoRa.beginPacket();
-    LoRa.print(data);
-    LoRa.endPacket(true);
-    Serial.println("MQTT -> Lora sent!");
-  }   
-}
-
 void LoraConfigure()
 {
   LoRa.setPins(DEFAULT_PIN_SS, DEFAULT_PIN_RST, DEFAULT_PIN_DIO0);
@@ -281,22 +337,6 @@ String LoraReadData()
   return data;
 }
 
-int CheckSenderId(String message)
-{
-  const size_t capacity = JSON_OBJECT_SIZE(12) + 80;
-  DynamicJsonDocument data(capacity);
-  int senderid = -1;
-
-  deserializeJson(data, message);
-
-  if(data.containsKey("id"))
-  {
-    senderid = data["id"];
-  }
-
-  return senderid;
-}
-
 String Hc12ReadData()
 {
   String data = HC12.readString();
@@ -305,45 +345,6 @@ String Hc12ReadData()
   return data;
 }
 
-void callback(char* topic, byte* payload, unsigned int length) 
-{
-  char messageBuffer [250];
-  String data = "";
-
-  Serial.print("Message arrived from MQTT [");
-  Serial.print(topic);
-  Serial.print("] ");
-
-  for (uint i = 0; i < length; i++)
-  {
-    data += (char)payload[i];
-  }
-  
-  Serial.println(data);
-
-  if(String(topic) == HC12_SEND_TOPIC)
-  {
-    hc12Flag = true;
-    receiveFlag = false;
-    NewDataFlag = true;
-  }
-
-  if(String(topic) == LORA_SEND_TOPIC)
-  {
-    hc12Flag = false;
-    receiveFlag = false;
-    NewDataFlag = true;
-  }
-
-  if(NewDataFlag)
-  {
-    timeClient.update();
-    id = CheckSenderId(data);
-    GatewaySend(data, hc12Flag);
-    DisplayData(id, hc12Flag, receiveFlag, timeClient.getFormattedTime());
-    NewDataFlag = false;
-  }
-}
 
 // MAIN CODE //
 
@@ -364,6 +365,7 @@ void setup()
 void loop() 
 {
   String incoming = "";
+  unsigned long actualTime = millis();
 
   // Check Lora
   if(LoRa.parsePacket()) 
@@ -391,7 +393,6 @@ void loop()
     DisplayData(id, hc12Flag, receiveFlag, timeClient.getFormattedTime());
     NewDataFlag = false;
   }
-
   //CheckMqttConnection();
   mqtt.loop();
 
@@ -400,4 +401,11 @@ void loop()
     ConnectToWifi();
     DisplayBackground();
   }
+  /*
+  if(actualTime - lastUpdate > RSSI_UPDATE_TIME * 1000)
+  {
+    Serial.println(WiFi.RSSI());
+    lastUpdate = actualTime;
+  }
+  */
 }

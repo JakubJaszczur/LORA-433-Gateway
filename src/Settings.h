@@ -19,6 +19,7 @@
 // Misc
 #define FIRMWARE_VERSION    "v1.0.0"
 #define DEVICE_NAME         "Gateway"
+#define RSSI_UPDATE_TIME    3
 
 // MQTT
 #define MQTT_MAX_PACKET_SIZE 256
@@ -29,7 +30,7 @@
 
 // Interface
 #define BOTTOM_TEXT_Y       62
-#define ID_TEXT_X           53
+#define ID_TEXT_X           52
 #define UPPER_ID_TEXT_Y     14
 #define LOWER_ID_TEXT_Y     44
 #define CURSOR_X            40
