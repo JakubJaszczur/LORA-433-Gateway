@@ -17,7 +17,7 @@
 #define TX_PIN              0  // D3
 
 // Misc
-#define FIRMWARE_VERSION    "v1.0.0"
+#define FIRMWARE_VERSION    "v1.1.0"
 #define DEVICE_NAME         "Gateway"
 #define RSSI_UPDATE_TIME    3
 
@@ -34,7 +34,9 @@
 #define UPPER_ID_TEXT_Y     14
 #define LOWER_ID_TEXT_Y     44
 #define CURSOR_X            40
-#define TIME_X              35
+#define TIME_X              15
+#define COUNTER_X           85
+#define WIFI_ICON_Y         15
 
 //LoRa frequency
 uint32_t  freq = 868100000; 					// Channel 0, 868.1 MHz

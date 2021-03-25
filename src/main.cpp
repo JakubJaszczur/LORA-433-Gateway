@@ -28,8 +28,11 @@ bool hc12Flag = false;
 bool receiveFlag = false;
 bool NewDataFlag = false;
 
-int id = 0;
+int id = -1;
+int rssi = -100;
+int counter = 0;
 unsigned long lastUpdate = 0;
+String dataTime;
 
 // FUNCTIONS //
 
@@ -55,37 +58,43 @@ void DisplayWelcome()
 void DisplayBackground()
 {
   display.clearDisplay();
-  display.drawBitmap(0, 21, MqttLogo, 50, 12, SSD1306_WHITE);
   display.setFont(&Dialog_plain_12);
-  display.setCursor(90, 15);
+  display.setCursor(25, 30);
+  display.print("MQTT");
+  display.setCursor(92, 15);
   display.print("LORA");
-  display.setCursor(90, 45);
+  display.setCursor(92, 45);
   display.print("HC12");
   display.setFont(&Dialog_plain_10);
   display.setCursor(0, BOTTOM_TEXT_Y);
-  display.print("Last:");
+  display.print("L:");
+  display.setCursor(70, BOTTOM_TEXT_Y);
+  display.print("C:");
+  display.setFont(&Dialog_plain_8);
+  display.setCursor(0, 43);
+  display.print("dBm");
 
   // Upper line
-  display.drawLine(20, 13, 20, 10, SSD1306_WHITE);
-  display.drawLine(20, 10, 40, 10, SSD1306_WHITE);
+  display.drawLine(35, 13, 35, 10, SSD1306_WHITE);
+  display.drawLine(35, 10, 40, 10, SSD1306_WHITE);
   // Lower line
-  display.drawLine(20, 37, 20, 40, SSD1306_WHITE);
-  display.drawLine(20, 40, 40, 40, SSD1306_WHITE);
+  display.drawLine(35, 37, 35, 40, SSD1306_WHITE);
+  display.drawLine(35, 40, 40, 40, SSD1306_WHITE);
 
   display.display();
 }
 
-void DisplayData(int id, bool hc12, bool receive, String time)
+void DisplayData()
 {
   display.setFont(&Dialog_plain_12);
   DisplayBackground();
 
   // HC12 data
-  if(hc12)
+  if(hc12Flag)
   {
     display.setCursor(CURSOR_X, LOWER_ID_TEXT_Y);
 
-    if(receive)
+    if(receiveFlag)
     {
       display.print("<       <");
     }
@@ -101,7 +110,7 @@ void DisplayData(int id, bool hc12, bool receive, String time)
   {
     display.setCursor(CURSOR_X, UPPER_ID_TEXT_Y);
 
-    if(receive)
+    if(receiveFlag)
     {
       display.print("<       <");
     }
@@ -116,7 +125,35 @@ void DisplayData(int id, bool hc12, bool receive, String time)
   display.setFont(&Dialog_plain_10);
   display.print(String(id));
   display.setCursor(TIME_X, BOTTOM_TEXT_Y);
-  display.print(time);
+  display.print(dataTime);
+  display.setCursor(COUNTER_X, BOTTOM_TEXT_Y);
+  display.print(counter);
+
+  display.setFont(&Dialog_plain_8);
+  display.setCursor(0, 12);
+  display.print(rssi);
+
+  if(rssi > -30)
+  {
+      display.drawBitmap(0, WIFI_ICON_Y, wifi4, 20, 20, SSD1306_WHITE);   //test
+  }
+  else if(rssi > -67)
+  {
+      display.drawBitmap(0, WIFI_ICON_Y, wifi3, 20, 20, SSD1306_WHITE);   //test
+  }
+  else if(rssi > -70)
+  {
+      display.drawBitmap(0, WIFI_ICON_Y, wifi2, 20, 20, SSD1306_WHITE);   //test
+  }
+  else if(rssi > -80)
+  {
+      display.drawBitmap(0, WIFI_ICON_Y, wifi1, 20, 20, SSD1306_WHITE);   //test
+  }
+  else
+  {
+      display.drawBitmap(0, WIFI_ICON_Y, wifi0, 20, 20, SSD1306_WHITE);   //test
+  }
+
   display.display();
 }
 
@@ -198,7 +235,6 @@ int CheckSenderId(String message)
 
 void callback(char* topic, byte* payload, unsigned int length) 
 {
-  char messageBuffer [250];
   String data = "";
 
   Serial.print("Message arrived from MQTT [");
@@ -211,6 +247,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   }
   
   Serial.println(data);
+  dataTime = timeClient.getFormattedTime();
 
   if(String(topic) == HC12_SEND_TOPIC)
   {
@@ -228,10 +265,11 @@ void callback(char* topic, byte* payload, unsigned int length)
 
   if(NewDataFlag)
   {
+    counter++;
     timeClient.update();
     id = CheckSenderId(data);
     GatewaySend(data, hc12Flag);
-    DisplayData(id, hc12Flag, receiveFlag, timeClient.getFormattedTime());
+    DisplayData();
     NewDataFlag = false;
   }
 }
@@ -376,6 +414,8 @@ void loop()
     NewDataFlag = true;
   }
 
+  mqtt.loop();
+
   // Check HC-12
   if(HC12.available()) 
   {        // If HC-12 has data
@@ -385,27 +425,32 @@ void loop()
     NewDataFlag = true;
   }
 
+  mqtt.loop();
+
   if(NewDataFlag)
   {
+    counter++;
     timeClient.update();
+    dataTime = timeClient.getFormattedTime();
     id = CheckSenderId(incoming);
     MqttSend(incoming, hc12Flag);
-    DisplayData(id, hc12Flag, receiveFlag, timeClient.getFormattedTime());
+    DisplayData();
     NewDataFlag = false;
   }
-  //CheckMqttConnection();
+  
   mqtt.loop();
 
   if(WiFi.status() != WL_CONNECTED)
   {
     ConnectToWifi();
     DisplayBackground();
+    DisplayData();
   }
-  /*
+ 
   if(actualTime - lastUpdate > RSSI_UPDATE_TIME * 1000)
   {
-    Serial.println(WiFi.RSSI());
     lastUpdate = actualTime;
+    rssi = WiFi.RSSI();
+    DisplayData();
   }
-  */
 }
