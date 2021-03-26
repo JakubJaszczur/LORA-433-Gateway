@@ -36,6 +36,7 @@ int rssiLora = 0;
 int counter = 0;
 unsigned long lastUpdate = 0;
 String dataTime;
+String version = String(VERSION_SHORT);
 
 // FUNCTIONS //
 
@@ -52,7 +53,7 @@ void DisplayWelcome()
   display.setCursor(0, 61);
   display.print("J.Jaszczur");
   display.setCursor(80, 61);
-  display.print(VERSION_SHORT);
+  display.print(version.substring(0, 4));
   display.display();
 
   delay(2000);
