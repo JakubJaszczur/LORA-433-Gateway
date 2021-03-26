@@ -14,6 +14,7 @@
 #include "WifiSettings.h"
 #include "Bitmaps.h"
 #include "Fonts.h"
+#include "version.h"
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 WiFiClient espClient;
@@ -27,9 +28,11 @@ SoftwareSerial HC12(RX_PIN, TX_PIN); // HC-12 TX Pin, HC-12 RX Pin
 bool hc12Flag = false;
 bool receiveFlag = false;
 bool NewDataFlag = false;
+bool rssiLoraFlag = false;
 
 int id = -1;
 int rssi = -100;
+int rssiLora = 0;
 int counter = 0;
 unsigned long lastUpdate = 0;
 String dataTime;
@@ -49,7 +52,7 @@ void DisplayWelcome()
   display.setCursor(0, 61);
   display.print("J.Jaszczur");
   display.setCursor(80, 61);
-  display.print(FIRMWARE_VERSION);
+  display.print(VERSION_SHORT);
   display.display();
 
   delay(2000);
@@ -370,6 +373,8 @@ String LoraReadData()
       data += (char)LoRa.read();
   }
 
+  rssiLora = LoRa.packetRssi();
+  rssiLoraFlag = true;
   Serial.println("Received data from Lora:");
   Serial.println(data);
   return data;
@@ -383,6 +388,19 @@ String Hc12ReadData()
   return data;
 }
 
+String AddRssiToData(String message)
+{
+  const size_t capacity = JSON_OBJECT_SIZE(12) + 80;
+  DynamicJsonDocument data(capacity);
+  
+  deserializeJson(data, message);
+
+  data["rssi"] = rssiLora;
+  
+  serializeJson(data, message);
+
+  return message;
+}
 
 // MAIN CODE //
 
@@ -433,6 +451,13 @@ void loop()
     timeClient.update();
     dataTime = timeClient.getFormattedTime();
     id = CheckSenderId(incoming);
+
+    if(rssiLoraFlag)
+    {
+      incoming = AddRssiToData(incoming);
+      rssiLoraFlag = false;
+    }
+
     MqttSend(incoming, hc12Flag);
     DisplayData();
     NewDataFlag = false;

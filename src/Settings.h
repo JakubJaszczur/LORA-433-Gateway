@@ -17,9 +17,8 @@
 #define TX_PIN              0  // D3
 
 // Misc
-#define FIRMWARE_VERSION    "v1.1.0"
 #define DEVICE_NAME         "Gateway"
-#define RSSI_UPDATE_TIME    3
+#define RSSI_UPDATE_TIME    3  // in seconds
 
 // MQTT
 #define MQTT_MAX_PACKET_SIZE 256
