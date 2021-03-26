@@ -53,7 +53,7 @@ void DisplayWelcome()
   display.setCursor(0, 61);
   display.print("J.Jaszczur");
   display.setCursor(80, 61);
-  display.print(version.substring(0, 4));
+  display.print(version.substring(0, 6));
   display.display();
 
   delay(2000);
@@ -237,6 +237,32 @@ int CheckSenderId(String message)
   return senderid;
 }
 
+void HandleService(String serviceMessage)
+{
+  String output;
+
+  if(serviceMessage == "STATUS")
+  {
+
+  const size_t capacity = JSON_OBJECT_SIZE(5) + 30;
+  DynamicJsonDocument data(capacity);
+  
+  data["last"] = id;
+  data["time"] = dataTime;
+  data["rcv"] = receiveFlag;
+  data["cnt"] = counter;
+  data["rssi"] = rssi;
+  
+  serializeJson(data, output);
+
+  }
+  
+  char msg[250];
+
+  output.toCharArray(msg, sizeof(msg));
+  mqtt.publish(DEBUG_TOPIC, msg);
+}
+
 void callback(char* topic, byte* payload, unsigned int length) 
 {
   String data = "";
@@ -265,6 +291,10 @@ void callback(char* topic, byte* payload, unsigned int length)
     hc12Flag = false;
     receiveFlag = false;
     NewDataFlag = true;
+  }
+    if(String(topic) == SERVICE_TOPIC)
+  {
+    HandleService(data);
   }
 
   if(NewDataFlag)
@@ -309,6 +339,7 @@ void ConnectToMQTT()
 
       mqtt.subscribe(LORA_SEND_TOPIC);
       mqtt.subscribe(HC12_SEND_TOPIC);
+      mqtt.subscribe(SERVICE_TOPIC);
 
       display.clearDisplay();
       display.setCursor(0, 20);
@@ -393,14 +424,14 @@ String AddRssiToData(String message)
 {
   const size_t capacity = JSON_OBJECT_SIZE(12) + 80;
   DynamicJsonDocument data(capacity);
-  
   deserializeJson(data, message);
 
   data["rssi"] = rssiLora;
   
-  serializeJson(data, message);
+  String output;
+  serializeJson(data, output);
 
-  return message;
+  return output;
 }
 
 // MAIN CODE //

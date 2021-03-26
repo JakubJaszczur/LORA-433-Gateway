@@ -26,6 +26,8 @@
 #define HC12_TOPIC          "home/433"
 #define LORA_SEND_TOPIC     "gateway/send/lora"
 #define HC12_SEND_TOPIC     "gateway/send/433"
+#define SERVICE_TOPIC       "gateway/service"
+#define DEBUG_TOPIC         "gateway/debug"
 
 // Interface
 #define BOTTOM_TEXT_Y       62

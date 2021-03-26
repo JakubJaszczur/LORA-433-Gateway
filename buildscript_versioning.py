@@ -3,7 +3,7 @@ tm = datetime.datetime.today()
 
 FILENAME_BUILDNO = 'versioning'
 FILENAME_VERSION_H = 'include/version.h'
-version = 'v1.1.' + str(tm.year)[-2:]+('0'+str(tm.month))[-2:]+('0'+str(tm.day))[-2:] + '_'
+version = 'v1.1.1.' + str(tm.year)[-2:]+('0'+str(tm.month))[-2:]+('0'+str(tm.day))[-2:] + '_'
 
 build_no = 0
 try:
